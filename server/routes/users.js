@@ -1,4 +1,3 @@
-// server/routes/users.js
 const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
@@ -7,7 +6,7 @@ const {
   followUser,
   unfollowUser,
   getFollowers,
-  getFollowing
+  getFollowing,
 } = require("../controllers/userController");
 
 /* ================== USER ROUTES ================== */

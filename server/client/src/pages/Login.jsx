@@ -1,48 +1,80 @@
-// client/src/pages/Login.jsx
-import React, { useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { api } from "../api";
+import { useAuth } from "../context/AuthContext";
+import AuthLayout from "../components/AuthLayout";
 
-const Login = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+export default function Login() {
+  const { authenticate, isAuthenticated } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = async e => {
-    e.preventDefault();
+  const redirectPath = location.state?.from?.pathname || "/feed";
+
+  if (isAuthenticated) {
+    return <Navigate to={redirectPath} replace />;
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
     try {
-      const res = await axios.post("/api/auth/login", { email, password });
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-      navigate("/feed");
-    } catch (err) {
-      alert("Login failed: " + err.response.data.message);
+      setError("");
+      setIsSubmitting(true);
+      const data = await api.login(form);
+      authenticate(data);
+      navigate(redirectPath, { replace: true });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="login-page">
-      <h2>Welcome to Okai</h2>
-      <form onSubmit={handleLogin}>
+    <AuthLayout
+      eyebrow="Return to your circle"
+      title="Feel the pulse before the scroll."
+      description="Okai now opens with a sharper identity system, cleaner auth flow, and a feed that feels built instead of assembled."
+      footer={
+        <p>
+          New here? <Link to="/register">Create your account</Link>
+        </p>
+      }
+    >
+      <div className="auth-copy">
+        <span className="eyebrow">Log in</span>
+        <h2>Enter your workspace</h2>
+      </div>
+
+      <form className="stack-form" onSubmit={handleSubmit}>
         <input
-          type="text"
-          placeholder="Email or Username"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
+          className="text-field"
+          type="email"
+          placeholder="Email address"
+          value={form.email}
+          onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+          required
         />
         <input
+          className="text-field"
           type="password"
           placeholder="Password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
+          value={form.password}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, password: event.target.value }))
+          }
+          required
         />
-        <button type="submit">Log In</button>
+        <button className="primary-button wide-button" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Opening..." : "Log in"}
+        </button>
       </form>
-      <p>
-        Don’t have an account? <a href="/register">Register</a>
-      </p>
-    </div>
-  );
-};
 
-export default Login;
+      {error && <p className="field-error">{error}</p>}
+    </AuthLayout>
+  );
+}

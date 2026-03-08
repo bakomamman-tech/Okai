@@ -1,151 +1,133 @@
-// server/controllers/postController.js
+const Notification = require("../models/Notification");
 const Post = require("../models/Post");
-const User = require("../models/User");
+const { normalizeId, serializePost } = require("../utils/serializers");
 
-/* ================== CREATE POST ================== */
+const userProjection =
+  "name username avatar bio headline location website cover role followers following";
+
 exports.createPost = async (req, res) => {
   try {
-    const { content, image } = req.body;
+    const content = req.body.content ? req.body.content.trim() : "";
+    const image = req.body.image ? req.body.image.trim() : "";
+
     if (!content && !image) {
       return res.status(400).json({ message: "Post must have content or image" });
     }
 
-    const post = new Post({
+    const post = await Post.create({
       author: req.user._id,
       content,
       image,
     });
 
-    await post.save();
-    res.status(201).json({ message: "Post created successfully", post });
-  } catch (err) {
-    console.error(err);
+    await post.populate("author", userProjection);
+
+    res.status(201).json({
+      message: "Post created successfully",
+      post: serializePost(post, req.user._id),
+    });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Failed to create post" });
   }
 };
 
-/* ================== GET ALL POSTS ================== */
-exports.getAllPosts = async (req, res) => {
+exports.getPosts = async (req, res) => {
   try {
     const posts = await Post.find()
-      .populate("author", "name username avatar")
-      .populate("comments.user", "name username avatar")
+      .populate("author", userProjection)
+      .populate("comments.user", userProjection)
       .sort({ createdAt: -1 });
 
-    res.json({ posts });
-  } catch (err) {
-    console.error(err);
+    res.json({
+      posts: posts.map((post) => serializePost(post, req.user._id)),
+    });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Failed to fetch posts" });
   }
 };
 
-/* ================== GET SINGLE POST ================== */
-exports.getPostById = async (req, res) => {
+exports.toggleLike = async (req, res) => {
   try {
     const post = await Post.findById(req.params.postId)
-      .populate("author", "name username avatar")
-      .populate("comments.user", "name username avatar");
+      .populate("author", userProjection)
+      .populate("comments.user", userProjection);
 
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    res.json({ post });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch post" });
-  }
-};
-
-/* ================== LIKE POST ================== */
-exports.likePost = async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    if (post.likes.includes(req.user._id)) {
-      return res.status(400).json({ message: "Already liked this post" });
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
     }
 
-    post.likes.push(req.user._id);
-    await post.save();
+    const userId = req.user._id;
+    const hasLiked = post.likes.some((id) => normalizeId(id) === normalizeId(userId));
 
-    res.json({ message: "Post liked successfully", likes: post.likes.length });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to like post" });
-  }
-};
+    if (hasLiked) {
+      post.likes = post.likes.filter((id) => normalizeId(id) !== normalizeId(userId));
+    } else {
+      post.likes.push(userId);
 
-/* ================== UNLIKE POST ================== */
-exports.unlikePost = async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    if (!post.likes.includes(req.user._id)) {
-      return res.status(400).json({ message: "You have not liked this post" });
+      if (normalizeId(post.author) !== normalizeId(userId)) {
+        await Notification.create({
+          userId: post.author._id,
+          type: "like",
+          actorId: userId,
+          entityId: post._id,
+        });
+      }
     }
 
-    post.likes = post.likes.filter((id) => String(id) !== String(req.user._id));
     await post.save();
 
-    res.json({ message: "Post unliked successfully", likes: post.likes.length });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to unlike post" });
+    res.json({
+      message: hasLiked ? "Post unliked successfully" : "Post liked successfully",
+      post: serializePost(post, userId),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to toggle like" });
   }
 };
 
-/* ================== ADD COMMENT ================== */
 exports.addComment = async (req, res) => {
   try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ message: "Comment text required" });
+    const text = req.body.text ? req.body.text.trim() : "";
 
-    const post = await Post.findById(req.params.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    post.comments.push({ user: req.user._id, text, createdAt: new Date() });
-    await post.save();
-
-    res.json({ message: "Comment added successfully", comments: post.comments });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to add comment" });
-  }
-};
-
-/* ================== GET USER FEED ================== */
-exports.getUserFeed = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).select("following");
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    const posts = await Post.find({ author: { $in: user.following } })
-      .populate("author", "name username avatar")
-      .populate("comments.user", "name username avatar")
-      .sort({ createdAt: -1 });
-
-    res.json({ feed: posts });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch feed" });
-  }
-};
-
-/* ================== DELETE POST ================== */
-exports.deletePost = async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    if (String(post.author) !== String(req.user._id)) {
-      return res.status(403).json({ message: "You can only delete your own posts" });
+    if (!text) {
+      return res.status(400).json({ message: "Comment text required" });
     }
 
-    await post.deleteOne();
-    res.json({ message: "Post deleted successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to delete post" });
+    const post = await Post.findById(req.params.postId)
+      .populate("author", userProjection)
+      .populate("comments.user", userProjection);
+
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    post.comments.push({
+      user: req.user._id,
+      text,
+      createdAt: new Date(),
+    });
+
+    await post.save();
+    await post.populate("comments.user", userProjection);
+
+    if (normalizeId(post.author) !== normalizeId(req.user._id)) {
+      await Notification.create({
+        userId: post.author._id,
+        type: "comment",
+        actorId: req.user._id,
+        entityId: post._id,
+      });
+    }
+
+    res.json({
+      message: "Comment added successfully",
+      post: serializePost(post, req.user._id),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to add comment" });
   }
 };

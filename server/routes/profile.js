@@ -1,14 +1,10 @@
-// server/routes/profile.js
 const express = require("express");
-const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
+const { getMyProfile, updateMyProfile } = require("../controllers/profileController");
 
-// GET logged-in user's profile
-router.get("/", authMiddleware, (req, res) => {
-  res.json({
-    message: "Profile fetched successfully",
-    user: req.user
-  });
-});
+const router = express.Router();
+
+router.get("/", authMiddleware, getMyProfile);
+router.put("/", authMiddleware, updateMyProfile);
 
 module.exports = router;

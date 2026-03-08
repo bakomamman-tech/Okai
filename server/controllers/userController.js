@@ -1,35 +1,48 @@
-// server/controllers/userController.js
+const Notification = require("../models/Notification");
 const User = require("../models/User");
+const { normalizeId, serializeUser } = require("../utils/serializers");
 
-/* ================== GET USER PROFILE ================== */
+const isSameId = (left, right) => normalizeId(left) === normalizeId(right);
+
 exports.getUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.params.userId).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
 
-    res.json({ user });
-  } catch (err) {
-    console.error(err);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      user: serializeUser(user, {
+        isCurrentUser: isSameId(user._id, req.user._id),
+        isFollowing: Array.isArray(user.followers)
+          ? user.followers.some((id) => isSameId(id, req.user._id))
+          : false,
+      }),
+    });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Failed to fetch user profile" });
   }
 };
 
-/* ================== FOLLOW USER ================== */
 exports.followUser = async (req, res) => {
   try {
     const targetUserId = req.params.userId;
     const currentUserId = req.user._id;
 
-    if (targetUserId === String(currentUserId)) {
+    if (isSameId(targetUserId, currentUserId)) {
       return res.status(400).json({ message: "You cannot follow yourself" });
     }
 
     const targetUser = await User.findById(targetUserId);
     const currentUser = await User.findById(currentUserId);
 
-    if (!targetUser) return res.status(404).json({ message: "Target user not found" });
+    if (!targetUser || !currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    if (targetUser.followers.includes(currentUserId)) {
+    if (targetUser.followers.some((id) => isSameId(id, currentUserId))) {
       return res.status(400).json({ message: "Already following this user" });
     }
 
@@ -39,29 +52,24 @@ exports.followUser = async (req, res) => {
     await targetUser.save();
     await currentUser.save();
 
+    await Notification.create({
+      userId: targetUser._id,
+      type: "follow",
+      actorId: currentUser._id,
+      entityId: currentUser._id,
+    });
+
     res.json({
       message: "User followed successfully",
-      user: {
-        id: targetUser._id,
-        name: targetUser.name,
-        username: targetUser.username,
-        avatar: targetUser.avatar,
-        followers: targetUser.followers.length
-      },
-      currentUser: {
-        id: currentUser._id,
-        name: currentUser.name,
-        username: currentUser.username,
-        following: currentUser.following.length
-      }
+      user: serializeUser(targetUser, { isFollowing: true }),
+      currentUser: serializeUser(currentUser),
     });
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Failed to follow user" });
   }
 };
 
-/* ================== UNFOLLOW USER ================== */
 exports.unfollowUser = async (req, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -70,78 +78,67 @@ exports.unfollowUser = async (req, res) => {
     const targetUser = await User.findById(targetUserId);
     const currentUser = await User.findById(currentUserId);
 
-    if (!targetUser) return res.status(404).json({ message: "Target user not found" });
+    if (!targetUser || !currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    if (!targetUser.followers.includes(currentUserId)) {
+    if (!targetUser.followers.some((id) => isSameId(id, currentUserId))) {
       return res.status(400).json({ message: "You are not following this user" });
     }
 
-    targetUser.followers = targetUser.followers.filter(
-      (id) => String(id) !== String(currentUserId)
-    );
-    currentUser.following = currentUser.following.filter(
-      (id) => String(id) !== String(targetUserId)
-    );
+    targetUser.followers = targetUser.followers.filter((id) => !isSameId(id, currentUserId));
+    currentUser.following = currentUser.following.filter((id) => !isSameId(id, targetUserId));
 
     await targetUser.save();
     await currentUser.save();
 
     res.json({
       message: "User unfollowed successfully",
-      user: {
-        id: targetUser._id,
-        name: targetUser.name,
-        username: targetUser.username,
-        avatar: targetUser.avatar,
-        followers: targetUser.followers.length
-      },
-      currentUser: {
-        id: currentUser._id,
-        name: currentUser.name,
-        username: currentUser.username,
-        following: currentUser.following.length
-      }
+      user: serializeUser(targetUser, { isFollowing: false }),
+      currentUser: serializeUser(currentUser),
     });
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Failed to unfollow user" });
   }
 };
 
-/* ================== GET FOLLOWERS LIST ================== */
 exports.getFollowers = async (req, res) => {
   try {
     const user = await User.findById(req.params.userId)
-      .populate("followers", "name username avatar")
+      .populate("followers", "name username avatar bio headline location website cover role followers following")
       .select("followers");
 
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     res.json({
       count: user.followers.length,
-      followers: user.followers
+      followers: user.followers.map((follower) => serializeUser(follower)),
     });
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Failed to fetch followers" });
   }
 };
 
-/* ================== GET FOLLOWING LIST ================== */
 exports.getFollowing = async (req, res) => {
   try {
     const user = await User.findById(req.params.userId)
-      .populate("following", "name username avatar")
+      .populate("following", "name username avatar bio headline location website cover role followers following")
       .select("following");
 
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     res.json({
       count: user.following.length,
-      following: user.following
+      following: user.following.map((followedUser) => serializeUser(followedUser)),
     });
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Failed to fetch following list" });
   }
 };

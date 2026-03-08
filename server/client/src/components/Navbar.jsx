@@ -1,29 +1,57 @@
-// client/src/components/Navbar.jsx
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import Avatar from "./Avatar";
+import Brand from "./Brand";
 
-const Navbar = () => {
+export default function Navbar({ searchValue = "", onSearchChange, notificationsCount = 0 }) {
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    navigate("/login");
+    logout();
+    navigate("/login", { replace: true });
   };
 
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
-
   return (
-    <nav className="navbar">
-      <h1>Okai</h1>
-      <ul>
-        <li><Link to="/feed">Feed</Link></li>
-        <li><Link to={`/profile/${user._id}`}>Profile</Link></li>
-        <li><Link to="/notifications">Notifications</Link></li>
-        <li><button onClick={handleLogout}>Logout</button></li>
-      </ul>
-    </nav>
-  );
-};
+    <header className="surface topbar">
+      <Brand compact />
 
-export default Navbar;
+      {onSearchChange ? (
+        <label className="searchbar">
+          <span>Search pulse</span>
+          <input
+            type="search"
+            placeholder="Search posts, people, notes"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+          />
+        </label>
+      ) : (
+        <div className="topbar-spacer" />
+      )}
+
+      <div className="topbar-actions">
+        <NavLink className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`.trim()} to="/feed">
+          Feed
+        </NavLink>
+        <NavLink
+          className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`.trim()}
+          to={user?._id ? `/profile/${user._id}` : "/profile"}
+        >
+          Profile
+        </NavLink>
+        <span className="notification-chip">Alerts {notificationsCount}</span>
+        <button className="ghost-button" type="button" onClick={handleLogout}>
+          Log out
+        </button>
+        <div className="topbar-user">
+          <Avatar size="sm" user={user} />
+          <div>
+            <strong>{user?.name || "Okai"}</strong>
+            <span>@{user?.username || "guest"}</span>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}

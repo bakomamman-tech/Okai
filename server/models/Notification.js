@@ -1,13 +1,16 @@
-// server/models/Notification.js
 const mongoose = require("mongoose");
 
-const NotificationSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // recipient
-  type: { type: String, enum: ["like", "comment", "follow"], required: true },
-  actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // who triggered it
-  entityId: { type: mongoose.Schema.Types.ObjectId }, // postId or userId
-  read: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now }
-});
+const notificationSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    type: { type: String, enum: ["like", "comment", "follow"], required: true },
+    actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    entityId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    read: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
 
-module.exports = mongoose.model("Notification", NotificationSchema);
+notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
+
+module.exports = mongoose.model("Notification", notificationSchema);

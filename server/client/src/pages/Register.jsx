@@ -1,54 +1,85 @@
-// client/src/pages/Register.jsx
-import React, { useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import { api } from "../api";
+import { useAuth } from "../context/AuthContext";
+import AuthLayout from "../components/AuthLayout";
 
-const Register = () => {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+export default function Register() {
+  const { authenticate, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleRegister = async e => {
-    e.preventDefault();
+  if (isAuthenticated) {
+    return <Navigate to="/feed" replace />;
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
     try {
-      const res = await axios.post("/api/auth/register", { name, email, password });
-      alert("Registration successful! Please log in.");
-      navigate("/login");
-    } catch (err) {
-      alert("Registration failed: " + err.response.data.message);
+      setError("");
+      setIsSubmitting(true);
+      const data = await api.register(form);
+      authenticate(data);
+      navigate("/feed", { replace: true });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="register-page">
-      <h2>Create your Okai account</h2>
-      <form onSubmit={handleRegister}>
+    <AuthLayout
+      eyebrow="Set the tone"
+      title="Create an account that already looks lived in."
+      description="Registration now lands you inside a real app state with profile defaults, cleaner navigation, and a feed that can actually react to activity."
+      footer={
+        <p>
+          Already have an account? <Link to="/login">Log in</Link>
+        </p>
+      }
+    >
+      <div className="auth-copy">
+        <span className="eyebrow">Create account</span>
+        <h2>Claim your place on Okai</h2>
+      </div>
+
+      <form className="stack-form" onSubmit={handleSubmit}>
         <input
+          className="text-field"
           type="text"
-          placeholder="Full Name"
-          value={name}
-          onChange={e => setName(e.target.value)}
+          placeholder="Display name"
+          value={form.name}
+          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+          required
         />
         <input
-          type="text"
-          placeholder="Email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
+          className="text-field"
+          type="email"
+          placeholder="Email address"
+          value={form.email}
+          onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+          required
         />
         <input
+          className="text-field"
           type="password"
           placeholder="Password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
+          value={form.password}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, password: event.target.value }))
+          }
+          required
         />
-        <button type="submit">Register</button>
+        <button className="primary-button wide-button" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Creating..." : "Create account"}
+        </button>
       </form>
-      <p>
-        Already have an account? <a href="/login">Log In</a>
-      </p>
-    </div>
-  );
-};
 
-export default Register;
+      {error && <p className="field-error">{error}</p>}
+    </AuthLayout>
+  );
+}
